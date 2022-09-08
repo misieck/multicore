@@ -16,6 +16,8 @@ case class Source(n: Int)
 case class Push(excess: Int, height:Int, edge:Edge)
 case class ChangeExcess(n: Int)
 case class ChangeExcessAsk(n: Int)
+case class PushAck(n:Int)
+case class PushNack(n:Int)
 
 case object Print
 case object PrintAsk
@@ -25,13 +27,14 @@ case object Maxflow
 case object SourceFlow
 case object Sink
 case object Hello
-case object InitialiseAsk
+case object Initialise
 case object Ack
-case object PushAck
-case object PushNack
 
 class Edge(var u: ActorRef, var v: ActorRef, var c: Int) {
 	var	f = 0
+	def print = {
+		println ("Edge flow: " + f + ", from " + u + " to " + v);
+	}
 }
 
 class Node(val index: Int) extends Actor {
@@ -42,6 +45,7 @@ class Node(val index: Int) extends Actor {
 	var	source:Boolean	= false		/* true if we are the source.					*/
 	var	sink:Boolean	= false		/* true if we are the sink.					*/
 	var	edges: List[Edge] = Nil		/* adjacency list with edge objects shared with other nodes.	*/
+	var remainingEdges: List[Edge] = edges
 	var	debug = false			/* to enable printing.						*/
 
 	def min(a:Int, b:Int) : Int = { if (a < b) a else b }
@@ -70,9 +74,9 @@ class Node(val index: Int) extends Actor {
 		var edge:Edge = null
 		tail = edges
 
-		var excessLeft = excess;
+	//	var excessLeft = excess;
 
-		while (tail != Nil && excessLeft > 0) {
+		while (tail != Nil && excess > 0) {
 			edge = tail.head
 			tail = tail.tail
 			var other_node = other(edge, self)
@@ -80,33 +84,15 @@ class Node(val index: Int) extends Actor {
 			var delta = 0;
 
 			if (edge.u == self) { //if we are the first node in the edge then its a forward edge
-				delta = min(excessLeft, edge.c - edge.f);
-
+				delta = min(excess, edge.c - edge.f);
 				//edge.f += delta
 			}
 			else {
-				delta = min(excessLeft, edge.f)
+				delta = min(excess, edge.f)
 				//edge.f -= delta
 			}
-			excessLeft -= delta;
+			excess -= delta;
 			other_node ! Push (delta, h, edge)
-		}
-	}
-
-	def oldpush(amount: Int, h: Int, edge:Edge): Unit ={
-		var delta:Int = amount;
-		if (this.h < h) {
-			if (edge.u == self) { //if we are the first node in the edge then its a forward edge
-				assert (amount == min(this.excess, edge.c - edge.f))
-				delta = amount;
-				edge.f += delta
-			}
-			else {
-				delta = min(this.excess, edge.f)
-				edge.f -= delta
-			}
-			excess += delta;
-			other(edge, self) ! ChangeExcess(-delta)
 		}
 	}
 
@@ -117,7 +103,6 @@ class Node(val index: Int) extends Actor {
 		case Print => {
 			status
 		}
-
 		case PrintAsk => {
 			status
 			sender ! Ack
@@ -146,7 +131,7 @@ class Node(val index: Int) extends Actor {
 			sink = true
 		}
 
-		case Push(n: Int, h: Int, edge: Edge) => {
+		case Push(delta: Int, h: Int, edge: Edge) => {
 			if (this.h < h) {
 				excess += delta;
 				if (self == edge.v) { //receiving push in positive direction
@@ -154,13 +139,20 @@ class Node(val index: Int) extends Actor {
 				} else{
 					edge.f -= delta;
 				}
-				sender ! PushAck
+				sender ! PushAck (delta)
 			}
 			else{
-				sender ! PushNack
+				sender ! PushNack (delta)
 			}
 		}
 
+		case PushAck(n:Int) => {
+
+		}
+
+		case PushNack(n:Int) => {
+			excess+=n;
+		}
 
 		case Source(n: Int) => {
 			h = n; source = true
@@ -170,7 +162,7 @@ class Node(val index: Int) extends Actor {
 			println("HEJA")
 		}
 
-		case InitialiseAsk => {
+		case Initialise => {
 
 			assert(source == true)
 			var rest: List[Edge] = edges
@@ -179,15 +171,12 @@ class Node(val index: Int) extends Actor {
 				current_edge = rest.head
 				rest = rest.tail
 				var capacity = current_edge.c
-				current_edge.f = capacity
 				var other_node = other(current_edge, self)
 
-				var initPush = other_node ? ChangeExcessAsk(capacity)
-				Await.ready(initPush, t.duration)
-				current_edge.f += capacity
+				var initPush = other_node ! Push(capacity, this.h, current_edge)
+				//current_edge.f += capacity
 				excess -= capacity
 			}
-			sender ! Ack
 		}
 
 		case Ack => {}
@@ -214,6 +203,7 @@ class Preflow extends Actor
 	def display = {
 		println("nodes: " + nodes.size)
 		nodes.foreach( x => x!Print )
+		edges.foreach(e => e.print )
 	}
 
 	def receive = {
@@ -239,10 +229,9 @@ class Preflow extends Actor
 			nodes(s) ! Source(n)
 
 			nodes(t) ! Sink
-			var init = nodes(s) ? InitialiseAsk
-			Await.ready(init, timeout.duration)
+			var init = nodes(s) ! Initialise
 			display
-//
+
 
 
 			nodes(t) ! Excess	/* ask sink for its excess preflow (which certainly still is zero). */
