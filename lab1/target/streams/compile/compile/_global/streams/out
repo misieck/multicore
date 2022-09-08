@@ -1,4 +1,0 @@
-[error] /home/michal/school2020/multicore/edan26/labs/lab1/preflow.scala:116:8: not found: value SourceFlow
-[error] 		case SourceFlow => {
-[error] 		     ^
-[error] one error found

@@ -1,0 +1,4 @@
+**lab*/target/scala-2.13/classes*
+*.class
+*.log
+*.jar
