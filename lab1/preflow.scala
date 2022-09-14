@@ -59,8 +59,8 @@ class Node(val index: Int) extends Actor {
 
 	def status: Unit = { if (debug) println(id + " e = " + excess + ", h = " + h) }
 
-	def enter(func: String): Unit = { if (debug) { println("--" + id + " enters " + func); status} }
-	def exit(func: String): Unit = { if (debug) { println(id + " exits " + func); status; println("--\n")} }
+	def enter(func: String): Unit = { if (debug) { println(" ** " + id + " enters " + func +" **| " + id + " e = " + excess + ", h = " + h);} }
+	def exit(func: String): Unit = { if (debug) { println(id + " exits " + func+" --| " +id + " e = " + excess + ", h = " + h); } }
 
 	def relabel : Unit = {
 
@@ -69,12 +69,13 @@ class Node(val index: Int) extends Actor {
 		h += 1
 		nacks = 0;
 		remainingEdges = edges
+		discharge
 		exit("relabel")
 	}
 
 
 	def discharge : Unit = {
-		enter("discharge, remaining:" + remainingEdges.size)
+		enter("  discharge, remaining:" + remainingEdges.size)
 		//var	tail: List[Edge] = Nil
 		var edge:Edge = null
 		//tail = remainingEdges
@@ -84,18 +85,17 @@ class Node(val index: Int) extends Actor {
 			var other_node = other(edge, self)
 			var delta = 0;
 			if (edge.u == self) { //if we are the first node in the edge then its a forward edge
-				delta = min(excess, edge.c - edge.f);
+				delta = min(excess, edge.c - edge.f)
 				//edge.f += delta
 			}
 			else {
-				delta = min(excess, edge.f)
+				delta = min(excess, edge.f + edge.c)
 				//edge.f -= delta
 			}
 			if (delta != 0) {
 				excess -= delta;
 				other_node ! Push(delta, h, edge)
 			}
-			this.control ! Update(index)
 		}
 
 		if (excess > 0 && nacks > 0){
@@ -103,7 +103,7 @@ class Node(val index: Int) extends Actor {
 		}
 
 		if (excess == 0){
-			this.control ! Zero(index)
+			//this.control ! Zero(index)
 		}
 
 		exit("discharge")
@@ -114,10 +114,10 @@ class Node(val index: Int) extends Actor {
 		case Debug(debug: Boolean) => this.debug = debug
 
 		case Print => {
-			status
+			//status
 		}
 		case PrintAsk => {
-			status
+			//status
 			sender ! Ack
 		}
 
@@ -131,7 +131,9 @@ class Node(val index: Int) extends Actor {
 		}*/
 
 		case Excess => {
+			//enter("Excess")
 			sender ! Flow(excess, index) /* send our current excess preflow to actor that asked for it. */
+			//exit("Excess")
 		}
 
 		case addEdge: Edge => {
@@ -146,7 +148,7 @@ class Node(val index: Int) extends Actor {
 		}
 
 		case Push(delta: Int, h: Int, edge: Edge) => {
-			enter("Push, delta: " + delta)
+			enter("Push, delta: " + delta + ", from h: " + h)
 			if (this.h < h) {
 				excess += delta;
 				if (self == edge.v) { //receiving push in positive direction
@@ -154,17 +156,17 @@ class Node(val index: Int) extends Actor {
 				} else{
 					edge.f -= delta;
 				}
-				//sender ! PushAck (delta)
 				if (! (this.sink|| this.source)) {
 					this.discharge
 				}
+        else{
+          control ! Flow( index = this.index, f = this.excess)
+        }
 			}
 			else{
 				sender ! PushNack (delta, h, this.index)
 			}
-			if (this.sink){
-				control!Flow( index = this.index, f = this.excess)
-			}
+
 			exit("Push")
 		}
 
@@ -203,11 +205,13 @@ class Node(val index: Int) extends Actor {
 				rest = rest.tail
 				var capacity = current_edge.c
 				var other_node = other(current_edge, self)
-
+				//println("InitPush")
 				var initPush = other_node ! Push(capacity, this.h, current_edge)
 				//current_edge.f += capacity
 				excess -= capacity
+        control ! Flow( index = this.index, f = this.excess)
 			}
+
 		}
 
 		case Ack => {}
@@ -224,6 +228,8 @@ class Preflow extends Actor
 {
 
 	implicit val timeout = Timeout(4 seconds);
+  var flow_source = 0;
+  var flow_sink = 0;
 	var	s	= 0;			/* index of source node.					*/
 	var	t	= 0;			/* index of sink node.					*/
 	var	n	= 0;			/* number of vertices in the graph.				*/
@@ -231,11 +237,7 @@ class Preflow extends Actor
 	var	nodes:Array[ActorRef]	= null	/* vertices in the graph.					*/
 	var	ret:ActorRef 		= null	/* Actor to send result to.					*/
 
-	def display(s: String = "") = {
-		//println(s + ", nodes: " + nodes.size)
-		//nodes.foreach( x => x!Print )
-		//edges.foreach(e => e.print )
-	}
+
 
 	def receive = {
 
@@ -254,14 +256,20 @@ class Preflow extends Actor
 					println("Zero: " + index)
 	  }
 
-		case Update(index: Int) => {
-			display(index + "")
-		}
-
 		case Flow(f:Int, index:Int) => {
-			assert(index == t)
+			assert(index == t || index == s)
 
-			ret ! (f, index)			/* somebody (hopefully the sink) told us its current excess preflow. */
+      /* somebody (hopefully the sink) told us its current excess preflow. */
+			if (index == t) {
+        flow_sink = f;
+      } else {
+        flow_source = f;
+      }
+      //println("  -   Flow at " +  index + ": " + f +", source: " + flow_source + ", sink: " + flow_sink );
+      if (flow_source == -flow_sink && flow_sink > 0) {
+
+        ret ! (f.abs, t)
+      }
 		}
 
 		case Maxflow => {
@@ -269,23 +277,19 @@ class Preflow extends Actor
 			nodes(s) ! Source(n)
 
 			nodes(t) ! Sink
+
 			var init = nodes(s) ! Initialise
-			display()
-
-
 
 			nodes(t) ! Excess	/* ask sink for its excess preflow (which certainly still is zero). */
 		}
-		case SourceFlow => {
-			ret = sender
-			nodes(s) ! Excess	/* ask sink for its excess preflow (which certainly still is zero). */
-		}
+
+
 		case Ack => {}
 	}
 }
 
 object main extends App {
-	implicit val t = Timeout(4 seconds);
+	implicit val t = Timeout(20 seconds);
 
 	val	begin = System.currentTimeMillis()
 	val system = ActorSystem("Main")
@@ -309,7 +313,7 @@ object main extends App {
 
 	for (i <- 0 to n-1) {
 		nodes(i) = system.actorOf(Props(new Node(i)), name = "v" + i)
-		nodes(i) ! Debug(true)
+		//nodes(i) ! Debug(true)
 	}
 
 	edges = new Array[Edge](m)
@@ -332,7 +336,7 @@ object main extends App {
 	val flow = control ? Maxflow
 	val (f, index) = Await.result(flow, t.duration)
 
-	println("f = " + f + ", index = " + index)
+	println("f = " + f)
 
 	system.stop(control);
 	system.terminate()
