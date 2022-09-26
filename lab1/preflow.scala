@@ -286,7 +286,7 @@ class Node(val index: Int) extends Actor {
 class Preflow extends Actor
 {
   var debug = false;
-	implicit val timeout = Timeout(14 seconds);
+	implicit val timeout = Timeout(20 seconds);
   var flow_source = 0;
   var flow_sink = 0;
 	var	s	= 0;			/* index of source node.					*/
@@ -357,7 +357,7 @@ class Preflow extends Actor
 }
 
 object main extends App {
-	implicit val t = Timeout(18 seconds);
+	implicit val t = Timeout(20 seconds);
 
 	val	begin = System.currentTimeMillis()
 	val system = ActorSystem("Main")
@@ -379,10 +379,12 @@ object main extends App {
 
 	nodes = new Array[ActorRef](n)
 
+	var debug = false;
 	for (i <- 0 to n-1) {
 		nodes(i) = system.actorOf(Props(new Node(i)), name = "v" + i)
-		//nodes(i) ! Debug(true)
+		nodes(i) ! Debug(debug)
 	}
+	control ! Debug(debug)
 /*	nodes(n-1) ! Debug(true)
 	nodes(n-2) ! Debug(true)
 	nodes(n-3) ! Debug(true)
