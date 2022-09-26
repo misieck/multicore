@@ -285,7 +285,7 @@ class Node(val index: Int) extends Actor {
 
 class Preflow extends Actor
 {
-
+  var debug = false;
 	implicit val timeout = Timeout(14 seconds);
   var flow_source = 0;
   var flow_sink = 0;
@@ -308,6 +308,7 @@ class Preflow extends Actor
 			for (u <- node)
 				u ! Control(self)
 		}
+		case Debug(debug) => this.debug = debug;
 
 		case edge:Array[Edge] => this.edges = edge
 
@@ -324,13 +325,16 @@ class Preflow extends Actor
       } else {
         flow_source = f;
       }
-     	var nodes:String = ""
-			for (node<-this.nodes) {
-				var statf = node?StatusAsk
-				nodes = nodes + Await.result(statf,timeout.duration) + "; "
+
+			if (debug) {
+				var nodes: String = ""
+				for (node <- this.nodes) {
+					var statf = node ? StatusAsk
+					nodes = nodes + Await.result(statf, timeout.duration) + "; "
+				}
+				println("             -      Flow at " + index + ": " + f + ", source: " + flow_source + ", sink: " + flow_sink);
+				println(nodes);
 			}
-			//println("             -      Flow at " +  index + ": " + f +", source: " + flow_source + ", sink: " + flow_sink );
-			//println(nodes);
       if (flow_source == -flow_sink && flow_sink > 0) {
         ret ! (f.abs, t)
       }
