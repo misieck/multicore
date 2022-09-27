@@ -47,6 +47,7 @@ class Node(val index: Int) extends Actor {
 	var nackedFlow:Int = 0;
 	var	h = 0;				/* height. 							*/
 	var pushesInFlight:Int = 0;
+	val inFlightLimit = 0;
 	var	control:ActorRef = null		/* controller to report to when e is zero. 			*/
 	var	source:Boolean	= false		/* true if we are the source.					*/
 	var	sink:Boolean	= false		/* true if we are the sink.					*/
@@ -311,7 +312,7 @@ class Preflow extends Actor
 
 			var init = nodes(s) ! Start
 
-			nodes(t) ! Excess	/* ask sink for its excess preflow (which certainly still is zero). */
+			//nodes(t) ! Excess	/* ask sink for its excess preflow (which certainly still is zero). */
 		}
 
 
